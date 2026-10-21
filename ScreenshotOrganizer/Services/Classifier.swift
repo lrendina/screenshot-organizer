@@ -73,7 +73,8 @@ final class Classifier {
                 await classify(record, client: client, categories: categories, model: model, sendImage: sendImage)
                 done += 1
                 try? context.save()
-                if case .missingKey? = currentClientError { break }
+                // A missing or rejected key fails every request the same way; stop instead of flagging the whole library.
+                if currentClientError?.isAuthFailure == true { break }
             }
             isRunning = false
         }
@@ -114,8 +115,8 @@ final class Classifier {
             let result: TypeSafeClient.ChoiceResult
             do {
                 result = try await client.classify(ocrText: text, imageJPEG: jpeg, categories: categories, model: model)
-            } catch TypeSafeClient.ClientError.missingKey {
-                throw TypeSafeClient.ClientError.missingKey
+            } catch let error as TypeSafeClient.ClientError where !error.isRetryable {
+                throw error
             } catch {
                 try await Task.sleep(for: .seconds(1))
                 result = try await client.classify(ocrText: text, imageJPEG: jpeg, categories: categories, model: model)

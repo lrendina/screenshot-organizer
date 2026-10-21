@@ -28,6 +28,23 @@ struct TypeSafeClient {
             case let .malformed(why): "Unexpected TypeSafe response: \(why)"
             }
         }
+
+        var isAuthFailure: Bool {
+            switch self {
+            case .missingKey: true
+            case let .http(code, _): code == 401 || code == 403
+            case .malformed: false
+            }
+        }
+
+        /// 4xx responses fail the same way on retry.
+        var isRetryable: Bool {
+            switch self {
+            case .missingKey: false
+            case let .http(code, _): !(400..<500).contains(code) || code == 429
+            case .malformed: true
+            }
+        }
     }
 
     var apiKey: String?
