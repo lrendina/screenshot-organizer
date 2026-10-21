@@ -10,6 +10,8 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.sendImage) private var sendImage = false
     @AppStorage(SettingsKey.imageModel) private var imageModel = "jev-preview"
     @AppStorage(SettingsKey.reviewThreshold) private var threshold = 0.5
+    @AppStorage(SettingsKey.engine) private var engine = Engine.local.rawValue
+    @AppStorage(SettingsKey.autoSort) private var autoSort = false
 
     @State private var apiKey = Keychain.get(SettingsKey.apiKey) ?? ""
     @State private var albumStatus: String?
@@ -19,34 +21,48 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    SecureField("API key", text: $apiKey)
-                        .textContentType(.password)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .onChange(of: apiKey) { _, value in
-                            Keychain.set(value.trimmingCharacters(in: .whitespacesAndNewlines), for: SettingsKey.apiKey)
-                        }
-                    TextField("Text model", text: $model)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                } header: {
-                    Text("TypeSafe")
+                    Picker("Sort with", selection: $engine) {
+                        Text("On-device").tag(Engine.local.rawValue)
+                        Text("Jev (your key)").tag(Engine.jev.rawValue)
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
                 } footer: {
-                    Text("Stored in this device's Keychain. Screenshot text is read on-device and only the text is sent to TypeSafe.")
+                    Text(engine == Engine.local.rawValue
+                         ? "Apple's MobileCLIP runs on your iPhone. Free, works offline, and nothing leaves the device."
+                         : "TypeSafe's Jev with your own API key. Only the text read from each screenshot is sent.")
                 }
 
-                Section {
-                    Toggle("Also send the image", isOn: $sendImage)
-                    if sendImage {
-                        TextField("Vision model", text: $imageModel)
+                if engine == Engine.local.rawValue {
+                    LocalModelSection()
+                } else {
+                    Section {
+                        SecureField("API key", text: $apiKey)
+                            .textContentType(.password)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .onChange(of: apiKey) { _, value in
+                                Keychain.set(value.trimmingCharacters(in: .whitespacesAndNewlines), for: SettingsKey.apiKey)
+                            }
+                        TextField("Text model", text: $model)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        Toggle("Also send the image", isOn: $sendImage)
+                        if sendImage {
+                            TextField("Vision model", text: $imageModel)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                        }
+                    } header: {
+                        Text("TypeSafe")
+                    } footer: {
+                        Text("The key is stored in this device's Keychain. Sending the image needs a key with image access.")
                     }
-                } footer: {
-                    Text("Sends a downscaled copy of each screenshot. Needs a key with image access.")
                 }
 
                 Section {
+                    Toggle("Auto-sort new screenshots", isOn: $autoSort)
                     VStack(alignment: .leading) {
                         Text("Review below \(Int(threshold * 100))% confidence")
                         Slider(value: $threshold, in: 0.2...0.9, step: 0.05)
@@ -126,6 +142,46 @@ struct SettingsView: View {
                 albumStatus = "Saved \(groups.values.filter { !$0.isEmpty }.count) albums."
             } catch {
                 albumStatus = "Couldn't save albums: \(error.localizedDescription)"
+            }
+        }
+    }
+}
+
+struct LocalModelSection: View {
+    @State private var store = LocalModelStore.shared
+
+    var body: some View {
+        Section("On-device model") {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MobileCLIP-S0")
+                    Text("Apple · research license · \(ByteCountFormatter.string(fromByteCount: LocalModelStore.approximateBytes, countStyle: .file))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                switch store.state {
+                case .ready:
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.title3)
+                case .downloading, .compiling:
+                    ProgressView()
+                case .notDownloaded, .failed:
+                    EmptyView()
+                }
+            }
+            switch store.state {
+            case .notDownloaded:
+                Button("Download model") { Task { await store.download() } }
+            case let .downloading(fraction):
+                ProgressView(value: fraction) {
+                    Text("Downloading… \(Int(fraction * 100))%").font(.footnote)
+                }
+            case .compiling:
+                Text("Preparing model…").font(.footnote).foregroundStyle(.secondary)
+            case .ready:
+                Button("Remove model", role: .destructive) { store.delete() }
+            case let .failed(message):
+                Text(message).font(.footnote).foregroundStyle(.red)
+                Button("Try again") { Task { await store.download() } }
             }
         }
     }

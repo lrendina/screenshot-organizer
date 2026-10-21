@@ -52,11 +52,18 @@ struct RootView: View {
         .task {
             seedCategoriesIfNeeded()
             access = await PHAuthorizationStatusBox(PhotoLibrary.requestAccess())
-            if access == .granted { classifier.sync(context: context) }
+            if access == .granted { syncAndMaybeSort() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active, access == .granted { classifier.sync(context: context) }
+            if phase == .active, access == .granted { syncAndMaybeSort() }
         }
+    }
+
+    private func syncAndMaybeSort() {
+        let added = classifier.sync(context: context)
+        guard added > 0, UserDefaults.standard.bool(forKey: SettingsKey.autoSort) else { return }
+        let canSort = Engine.current == .local ? LocalModelStore.shared.isReady : Keychain.apiKey != nil
+        if canSort { classifier.run(context: context) }
     }
 
     private func seedCategoriesIfNeeded() {

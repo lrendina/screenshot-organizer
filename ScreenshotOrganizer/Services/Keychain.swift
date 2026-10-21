@@ -5,6 +5,16 @@ import Security
 enum Keychain {
     private static let service = "com.lrendina.ScreenshotOrganizer"
 
+    /// The stored API key. Debug builds fall back to the `TYPESAFE_API_KEY` launch environment
+    /// variable (`SIMCTL_CHILD_TYPESAFE_API_KEY` with `simctl launch`).
+    static var apiKey: String? {
+        if let stored = get(SettingsKey.apiKey), !stored.isEmpty { return stored }
+        #if DEBUG
+        if let env = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !env.isEmpty { return env }
+        #endif
+        return nil
+    }
+
     static func get(_ account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

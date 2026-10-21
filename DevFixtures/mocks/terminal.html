@@ -1,0 +1,12 @@
+<html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="background:#1e1e1e;color:#d4d4d4;font-family:Menlo;font-size:12px;padding:12px;white-space:pre-wrap">$ npm run build
+> next build
+Creating an optimized production build ...
+<span style="color:#f44">Failed to compile.</span>
+./app/dashboard/page.tsx:42:17
+Type error: Property 'payouts' does not exist on type 'Creator'.
+  40 |   const total = creators
+  41 |     .map((c) =&gt; c.earnings)
+<span style="color:#f44">&gt; 42 |     .reduce((a, c) =&gt; a + c.payouts, 0)</span>
+     |                 ^
+  43 |   return &lt;Summary total={total} /&gt;
+error Command failed with exit code 1.</body></html>

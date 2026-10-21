@@ -6,18 +6,27 @@ enum PhotoLibrary {
         await PHPhotoLibrary.requestAuthorization(for: .readWrite)
     }
 
-    /// All screenshots, newest first.
+    /// All screenshots, newest first. Photos tags most screenshots with `.photoScreenshot`, but
+    /// images saved or imported from elsewhere often lose the tag, so an image whose pixel size
+    /// exactly matches this device's screen also counts.
+    @MainActor
     static func fetchScreenshots() -> [PHAsset] {
         let options = PHFetchOptions()
-        options.predicate = NSPredicate(
-            format: "(mediaSubtypes & %d) != 0",
-            PHAssetMediaSubtype.photoScreenshot.rawValue
-        )
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         let result = PHAsset.fetchAssets(with: .image, options: options)
+
+        let screen = UIScreen.main.nativeBounds.size
+        let screenSizes: Set<[Int]> = [
+            [Int(screen.width), Int(screen.height)],
+            [Int(screen.height), Int(screen.width)],
+        ]
         var assets: [PHAsset] = []
-        assets.reserveCapacity(result.count)
-        result.enumerateObjects { asset, _, _ in assets.append(asset) }
+        result.enumerateObjects { asset, _, _ in
+            if asset.mediaSubtypes.contains(.photoScreenshot)
+                || screenSizes.contains([asset.pixelWidth, asset.pixelHeight]) {
+                assets.append(asset)
+            }
+        }
         return assets
     }
 

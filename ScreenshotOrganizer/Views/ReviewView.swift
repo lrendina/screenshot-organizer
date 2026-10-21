@@ -19,11 +19,11 @@ struct ReviewView: View {
                     )
                     .padding(.top, 80)
                 } else {
-                    ScreenshotGrid(records: needsReview)
+                    ScreenshotGrid(records: needsReview, scope: .review)
                 }
             }
             .navigationTitle("Review")
-            .navigationDestination(for: ScreenshotRecord.self) { ScreenshotDetailView(record: $0) }
+            .navigationDestination(for: ScreenshotRoute.self) { ScreenshotPager(records: needsReview, selection: $0.assetID) }
         }
     }
 }
