@@ -1,8 +1,11 @@
 #!/bin/zsh
 # Captures real simulator screenshots of pages and adds them to the booted sim's Photos.
+# Serve the mocks first: (cd DevFixtures/mocks && python3 -m http.server 3000 --bind 127.0.0.1)
 out=${0:A:h}/shots
 urls=(
   chat=http://127.0.0.1:3000/chat.html
+  recipe2=http://127.0.0.1:3000/recipe.html
+  shop2=http://127.0.0.1:3000/shop.html
   receipt=http://127.0.0.1:3000/receipt.html
   boarding=http://127.0.0.1:3000/boarding.html
   terminal=http://127.0.0.1:3000/terminal.html
@@ -13,6 +16,8 @@ urls=(
   shop=https://www.apple.com/shop/product/MX542AM/A/airpods-pro-3
   code=https://github.com/apple/swift-algorithms/blob/main/Sources/Algorithms/Chunked.swift
 )
+# A cold-launched Safari renders its first page black; warm it up first.
+xcrun simctl openurl booted "about:blank"; sleep 5
 for pair in $urls; do
   name=${pair%%=*}; url=${pair#*=}
   xcrun simctl openurl booted "$url"

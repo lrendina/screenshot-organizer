@@ -11,22 +11,19 @@ enum PhotoLibrary {
     /// exactly matches this device's screen also counts.
     @MainActor
     static func fetchScreenshots() -> [PHAsset] {
+        let screen = UIScreen.main.nativeBounds.size
+        let (w, h) = (Int(screen.width), Int(screen.height))
         let options = PHFetchOptions()
+        // Filter in the Photos query so a large library isn't enumerated in Swift.
+        options.predicate = NSPredicate(
+            format: "(mediaSubtypes & %d) != 0 OR (pixelWidth == %d AND pixelHeight == %d) OR (pixelWidth == %d AND pixelHeight == %d)",
+            PHAssetMediaSubtype.photoScreenshot.rawValue, w, h, h, w
+        )
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         let result = PHAsset.fetchAssets(with: .image, options: options)
-
-        let screen = UIScreen.main.nativeBounds.size
-        let screenSizes: Set<[Int]> = [
-            [Int(screen.width), Int(screen.height)],
-            [Int(screen.height), Int(screen.width)],
-        ]
         var assets: [PHAsset] = []
-        result.enumerateObjects { asset, _, _ in
-            if asset.mediaSubtypes.contains(.photoScreenshot)
-                || screenSizes.contains([asset.pixelWidth, asset.pixelHeight]) {
-                assets.append(asset)
-            }
-        }
+        assets.reserveCapacity(result.count)
+        result.enumerateObjects { asset, _, _ in assets.append(asset) }
         return assets
     }
 

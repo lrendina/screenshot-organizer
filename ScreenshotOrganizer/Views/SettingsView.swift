@@ -183,6 +183,11 @@ struct LocalModelSection: View {
                 Text(message).font(.footnote).foregroundStyle(.red)
                 Button("Try again") { Task { await store.download() } }
             }
+            Link(destination: URL(string: "https://github.com/apple/ml-mobileclip/blob/main/LICENSE_MODELS")!) {
+                Text("Apple Machine Learning Research Model is licensed under the Apple Machine Learning Research Model License Agreement.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

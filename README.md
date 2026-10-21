@@ -83,5 +83,8 @@ DevFixtures/                  mock pages, capture script, labeled screenshots
 
 ## Licenses
 
+The app's code is MIT (see [LICENSE](LICENSE)); third-party code and models are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+
 - Tokenizer code: `apple/ml-mobileclip` (MIT), adapted from Hugging Face `swift-coreml-transformers`.
 - **MobileCLIP weights are research-only.** They're under the Apple Machine Learning Research Model License ([LICENSE_MODELS](https://github.com/apple/ml-mobileclip/blob/main/LICENSE_MODELS)), which allows "non-commercial scientific research" and excludes "use in any commercial product or service". They're downloaded at runtime, not bundled. Fine for experimenting and research; any release to users needs a model with a commercial-friendly license. `MobileCLIP.swift` is plain CLIP zero-shot code, so any CLIP-style Core ML image/text encoder pair with 512-d outputs can be dropped in.
