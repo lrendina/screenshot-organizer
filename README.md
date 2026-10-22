@@ -44,6 +44,22 @@ Run on a device (set your signing team) or a simulator. On first launch, tap **G
 
 > TypeSafe's docs recommend keeping API keys on a server. A Keychain key is fine for a personal build. Before shipping BYOK to other people, consider a proxy.
 
+## TestFlight
+
+One-time setup:
+1. Join the [Apple Developer Program](https://developer.apple.com/programs/enroll/) ($99/yr). Your Team ID is under Membership details.
+2. In [App Store Connect](https://appstoreconnect.apple.com/apps), create the app: **+ → New App**, iOS, bundle ID `com.lrendina.ScreenshotOrganizer` (register it at developer.apple.com → Identifiers first if it isn't in the list), SKU `shotsort`. The name has to be unique on the App Store.
+3. Create an API key: App Store Connect → Users and Access → Integrations → **App Store Connect API** → Team Keys → +, role **App Manager**. Download the `.p8` file (you can only download it once) and note the Key ID and Issuer ID.
+
+Each build:
+```sh
+SHOTSORT_TEAM_ID=XXXXXXXXXX ASC_KEY_ID=XXXXXXXXXX ASC_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx \
+ASC_KEY_PATH=~/.appstoreconnect/private_keys/AuthKey_XXXXXXXXXX.p8 Tools/testflight.sh
+```
+This archives a Release build (the build number is a timestamp), signs it automatically, and uploads it. After processing, the build appears under TestFlight. Internal testers (people on your App Store Connect team, up to 100) can install it right away. External testers need a one-time Beta App Review.
+
+To build from Xcode instead, run `SHOTSORT_TEAM_ID=XXXXXXXXXX xcodegen generate`, then use Product → Archive → Distribute App → TestFlight & App Store.
+
 ## Development
 
 ```sh
