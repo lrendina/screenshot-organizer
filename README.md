@@ -44,6 +44,19 @@ Run on a device (set your signing team) or a simulator. On first launch, tap **G
 
 > TypeSafe's docs recommend keeping API keys on a server. A Keychain key is fine for a personal build. Before shipping BYOK to other people, consider a proxy.
 
+## Install without a paid Apple Developer account
+
+**From source with Xcode (free Apple ID):**
+1. Clone the repo, then run `brew install xcodegen`.
+2. Generate the project with a bundle ID that's yours (free accounts can't reuse someone else's):
+   `SHOTSORT_BUNDLE_ID=com.yourname.shotsort xcodegen generate`
+3. Open `ScreenshotOrganizer.xcodeproj` and sign in under Xcode → Settings → Accounts. Under the target's Signing & Capabilities, pick your **Personal Team**.
+4. Plug in your iPhone, select it as the run destination, and press ⌘R. The first time, turn on Developer Mode on the phone (Settings → Privacy & Security), and trust your certificate under Settings → General → VPN & Device Management.
+
+Free signing expires after **7 days**. Run it from Xcode again to renew. A free account can have up to 3 sideloaded apps per device.
+
+**Sideloading an .ipa (no Xcode):** `Tools/build-ipa.sh` writes an unsigned `build/Shotsort.ipa`. Tools like [AltStore](https://altstore.io), [SideStore](https://sidestore.io) or Sideloadly sign it with the installer's own free Apple ID. The same 7-day and 3-app limits apply; AltStore and SideStore can refresh it automatically.
+
 ## TestFlight
 
 One-time setup:
