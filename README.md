@@ -59,13 +59,13 @@ App Store coming soon. In the meantime follow the instructions below
 | Stage | Time per screenshot |
 |---|---|
 | Load 768px image from Photos | 1.3 ms |
-| Fast text recognition | 14 ms (accurate recognition: 60 ms) |
+| Fast text recognition | 14 ms (accurate recognition: 60 ms; fast can miss small or faded text) |
 | Image embedding (3 crops) | 7 ms |
 | Text embedding | 5 ms |
 | End to end, image only, 6 cores in parallel | ≈ 4 s per 1,000 screenshots |
 | End to end, image + text (what the app runs) | not yet measured on iPhone; ≈ 10.6 s per 1,000 on an M4 Mac |
 
-Vision's text recognizer must not run directly on Swift's cooperative thread pool. With a recognizer on every pool thread it deadlocks, so it runs on its own `OperationQueue` ([OCR.swift](ScreenshotOrganizer/Services/OCR.swift)).
+Text recognition runs on its own bounded `OperationQueue` ([OCR.swift](ScreenshotOrganizer/Services/OCR.swift)). When it ran inside the task group, one Vision request per core, it hung: on an iPhone 17 with 6 in flight, and on an M4 Mac with 10. On the queue it completes on the Mac and in the simulator. It hasn't been confirmed on an iPhone yet.
 
 To benchmark your own phone (read-only, no changes saved):
 ```sh

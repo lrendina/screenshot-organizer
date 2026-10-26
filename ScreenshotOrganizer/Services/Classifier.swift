@@ -248,6 +248,8 @@ final class Classifier {
                     if authFailure { group.cancelAll(); return }
                 case let .notOnDevice(id):
                     if let job = jobsByID[id] { deferred.append(job) }
+                    _ = addNext()
+                    continue
                 }
                 saver.changed()
                 _ = addNext()
