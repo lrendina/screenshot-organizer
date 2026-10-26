@@ -10,6 +10,41 @@ Sorts your iPhone screenshots into categories. Pick the model in Settings:
 | Cost | Free, one-time 108 MB download | Your TypeSafe usage |
 | Signal | Screenshot image + on-screen text | On-screen text (+ image with a vision model) |
 
+## Install on your iPhone
+
+Shotsort isn't on the App Store. You install it from this repo with a Mac and a free Apple ID. It takes about 10 minutes the first time.
+
+**You need:** a Mac with [Xcode](https://apps.apple.com/app/xcode/id497799835), [Homebrew](https://brew.sh), an iPhone with iOS 17 or later, and a cable.
+
+1. **Get the code**
+   ```sh
+   git clone https://github.com/lrendina/screenshot-organizer.git
+   cd screenshot-organizer
+   brew install xcodegen
+   ```
+2. **Sign in to Xcode with your Apple ID** (free): open Xcode, go to **Xcode → Settings → Accounts → + → Apple ID**. This creates a free "Personal Team".
+3. **Connect your iPhone:** plug it in, unlock it, and tap **Trust**. Then turn on **Settings → Privacy & Security → Developer Mode** (the phone restarts and asks you to confirm).
+4. **Build and install:**
+   ```sh
+   SHOTSORT_BUNDLE_ID=com.yourname.shotsort Tools/install-device.sh
+   ```
+   Use any bundle ID unique to you; free accounts can't reuse someone else's. The script finds your team and phone, then builds, signs and installs.
+5. **Trust the app (first time only):** on the phone, open **Settings → General → VPN & Device Management**, tap your Apple ID, then **Trust**.
+6. **Open Shotsort**, allow access to **All Photos**, and tap **Get model** (108 MB download). Your screenshots start sorting.
+
+**Every 7 days** a free-account app stops opening. Plug the phone in and run step 4 again; your sorted screenshots are kept. A paid developer account ($99/yr) extends this to a year.
+
+**Prefer Xcode's UI?** Run `SHOTSORT_BUNDLE_ID=com.yourname.shotsort xcodegen generate`, then open `ScreenshotOrganizer.xcodeproj`. Pick your Personal Team under the target's **Signing & Capabilities**, choose your iPhone as the destination, and press ⌘R.
+
+**No Mac?** `Tools/build-ipa.sh` (run on a Mac) produces an unsigned `build/Shotsort.ipa`. [AltStore](https://altstore.io), [SideStore](https://sidestore.io) or Sideloadly can install it with your own Apple ID and renew it every 7 days automatically.
+
+**Troubleshooting**
+- *"No Apple team found"*: do step 2.
+- *"No iPhone connected"*: unlock the phone, tap Trust, and check that Developer Mode is on.
+- *Build fails with a provisioning error*: your bundle ID is taken. Pick a different `SHOTSORT_BUNDLE_ID`.
+- *"Untrusted Developer" when opening the app*: do step 5.
+- *Free accounts are limited to 3 sideloaded apps per phone*: delete one you don't use.
+
 ## How it works
 
 1. Reads screenshots from Photos: anything tagged `photoScreenshot`, plus images whose pixel size matches this device's screen (imported or saved screenshots often lose the tag).
@@ -43,19 +78,6 @@ open ScreenshotOrganizer.xcodeproj
 Run on a device (set your signing team) or a simulator. On first launch, tap **Get model** to download MobileCLIP (108 MB from Hugging Face; compiled on-device). To use Jev instead, go to **Settings → Jev (your key)** and paste your TypeSafe key. It's stored in the Keychain. Debug builds also read `TYPESAFE_API_KEY` from the launch environment (`SIMCTL_CHILD_TYPESAFE_API_KEY=… xcrun simctl launch booted com.lrendina.ScreenshotOrganizer`).
 
 > TypeSafe's docs recommend keeping API keys on a server. A Keychain key is fine for a personal build. Before shipping BYOK to other people, consider a proxy.
-
-## Install without a paid Apple Developer account
-
-**From source with Xcode (free Apple ID):**
-1. Clone the repo, then run `brew install xcodegen`.
-2. Generate the project with a bundle ID that's yours (free accounts can't reuse someone else's):
-   `SHOTSORT_BUNDLE_ID=com.yourname.shotsort xcodegen generate`
-3. Open `ScreenshotOrganizer.xcodeproj` and sign in under Xcode → Settings → Accounts. Under the target's Signing & Capabilities, pick your **Personal Team**.
-4. Plug in your iPhone, select it as the run destination, and press ⌘R. The first time, turn on Developer Mode on the phone (Settings → Privacy & Security), and trust your certificate under Settings → General → VPN & Device Management.
-
-Free signing expires after **7 days**. Run it from Xcode again to renew. A free account can have up to 3 sideloaded apps per device.
-
-**Sideloading an .ipa (no Xcode):** `Tools/build-ipa.sh` writes an unsigned `build/Shotsort.ipa`. Tools like [AltStore](https://altstore.io), [SideStore](https://sidestore.io) or Sideloadly sign it with the installer's own free Apple ID. The same 7-day and 3-app limits apply; AltStore and SideStore can refresh it automatically.
 
 ## TestFlight
 
@@ -106,7 +128,7 @@ ScreenshotOrganizer/
   Resources/                  CLIP BPE vocab + merges
   Views/                      Library, Review, Detail pager, Settings
 ScreenshotOrganizerTests/     unit tests
-Tools/                        icon renderer, on-device model eval
+Tools/                        install-device, build-ipa, testflight, icon renderer, model eval
 DevFixtures/                  mock pages, capture script, labeled screenshots
 ```
 
