@@ -4,12 +4,20 @@ import SwiftUI
 
 @main
 struct ScreenshotOrganizerApp: App {
-    @State private var classifier = Classifier()
+    @State private var index: LibraryIndex
+    @State private var classifier: Classifier
+
+    init() {
+        let index = LibraryIndex()
+        _index = State(initialValue: index)
+        _classifier = State(initialValue: Classifier(index: index))
+    }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(classifier)
+                .environment(index)
         }
         .modelContainer(for: [ScreenshotRecord.self, CategoryDef.self])
     }
@@ -52,6 +60,10 @@ struct RootView: View {
         .task {
             seedCategoriesIfNeeded()
             access = await PHAuthorizationStatusBox(PhotoLibrary.requestAccess())
+            if access == .granted, let count = Benchmark.requestedCount {
+                await Benchmark.run(count: count)
+                return
+            }
             if access == .granted { syncAndMaybeSort() }
         }
         .onChange(of: scenePhase) { _, phase in

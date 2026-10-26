@@ -32,11 +32,11 @@ enum PhotoLibrary {
     }
 
     /// Loads an image no larger than `maxDimension` on its longest side.
-    static func image(for asset: PHAsset, maxDimension: CGFloat) async -> UIImage? {
+    static func image(for asset: PHAsset, maxDimension: CGFloat, allowNetwork: Bool = true) async -> UIImage? {
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
         options.resizeMode = .fast
-        options.isNetworkAccessAllowed = true
+        options.isNetworkAccessAllowed = allowNetwork
         options.isSynchronous = false
         let scale = min(1, maxDimension / CGFloat(max(asset.pixelWidth, asset.pixelHeight)))
         let size = CGSize(width: CGFloat(asset.pixelWidth) * scale, height: CGFloat(asset.pixelHeight) * scale)

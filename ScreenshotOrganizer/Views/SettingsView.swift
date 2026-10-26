@@ -4,7 +4,10 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \CategoryDef.sortIndex) private var categories: [CategoryDef]
-    @Query private var records: [ScreenshotRecord]
+    @Environment(LibraryIndex.self) private var libraryIndex
+
+    /// Fetched on demand; a live @Query here would re-render Settings on every save while sorting.
+    private var records: [ScreenshotRecord] { (try? context.fetch(FetchDescriptor<ScreenshotRecord>())) ?? [] }
 
     @AppStorage(SettingsKey.model) private var model = "jev-latest"
     @AppStorage(SettingsKey.sendImage) private var sendImage = false
@@ -118,6 +121,7 @@ struct SettingsView: View {
             context.delete(category)
         }
         try? context.save()
+        libraryIndex.reload(context: context)
     }
 
     private func resetClassifications() {
@@ -128,12 +132,13 @@ struct SettingsView: View {
             record.lastError = nil
         }
         try? context.save()
+        libraryIndex.reload(context: context)
     }
 
     private func saveAlbums() {
         var groups: [String: [String]] = [:]
         for category in categories {
-            groups[category.name] = records.filter { $0.category == category.key }.map(\.assetID)
+            groups[category.name] = (libraryIndex.byCategory[category.key] ?? []).map(\.id)
         }
         albumStatus = "Saving…"
         Task {

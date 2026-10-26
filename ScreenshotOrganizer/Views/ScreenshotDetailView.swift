@@ -1,32 +1,62 @@
 import SwiftData
 import SwiftUI
 
-/// Swipe between screenshots, starting at `selection`.
+/// Swipe between screenshots, starting at `selection`. Pages are built lazily, so a list of
+/// thousands of screenshots doesn't create thousands of views up front.
 struct ScreenshotPager: View {
-    let records: [ScreenshotRecord]
-    @State var selection: String
+    let shots: [Shot]
+    @State private var selection: String?
+
+    init(shots: [Shot], selection: String) {
+        self.shots = shots
+        _selection = State(initialValue: selection)
+    }
 
     var body: some View {
-        TabView(selection: $selection) {
-            ForEach(records) { record in
-                ScreenshotDetailView(record: record).tag(record.assetID)
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(shots) { shot in
+                    RecordPage(assetID: shot.id)
+                        .containerRelativeFrame(.horizontal)
+                        .id(shot.id)
+                }
             }
+            .scrollTargetLayout()
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $selection)
+        .scrollIndicators(.hidden)
         .background(Color(.systemGroupedBackground))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let record = records.first(where: { $0.assetID == selection }) {
+            if let shot = shots.first(where: { $0.id == selection }) {
                 ToolbarItem(placement: .principal) {
-                    if let date = record.createdAt {
+                    if let date = shot.createdAt {
                         Text(date, format: .dateTime.month().day().year().hour().minute())
                             .font(.subheadline.weight(.semibold))
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    ShareScreenshotButton(assetID: record.assetID)
+                    ShareScreenshotButton(assetID: shot.id)
                 }
             }
+        }
+    }
+}
+
+/// Loads one record by asset ID for the detail page.
+private struct RecordPage: View {
+    @Query private var records: [ScreenshotRecord]
+
+    init(assetID: String) {
+        _records = Query(filter: #Predicate<ScreenshotRecord> { $0.assetID == assetID })
+    }
+
+    var body: some View {
+        if let record = records.first {
+            ScreenshotDetailView(record: record)
+        } else {
+            Color.clear
         }
     }
 }
@@ -34,6 +64,7 @@ struct ScreenshotPager: View {
 struct ScreenshotDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(Classifier.self) private var classifier
+    @Environment(LibraryIndex.self) private var index
     @Bindable var record: ScreenshotRecord
     @Query(sort: \CategoryDef.sortIndex) private var categories: [CategoryDef]
     @State private var showFullScreen = false
@@ -94,6 +125,7 @@ struct ScreenshotDetailView: View {
                         record.category = category.key
                         record.userOverride = true
                         try? context.save()
+                        index.reload(context: context)
                     } label: {
                         Label(category.name, systemImage: category.symbol)
                             .font(.subheadline.weight(selected ? .semibold : .regular))

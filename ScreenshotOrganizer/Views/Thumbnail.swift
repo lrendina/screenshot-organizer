@@ -3,7 +3,8 @@ import SwiftUI
 
 struct Thumbnail: View {
     let assetID: String
-    var maxDimension: CGFloat = 300
+    /// Longest side of the requested image, in pixels.
+    var maxDimension: CGFloat = 360
     @State private var image: UIImage?
 
     var body: some View {
@@ -11,14 +12,13 @@ struct Thumbnail: View {
             .overlay {
                 if let image {
                     Image(uiImage: image).resizable().scaledToFill()
-                        .transition(.opacity)
                 }
             }
             .clipped()
             .task(id: assetID) {
-                guard let asset = PhotoLibrary.asset(for: assetID) else { return }
-                let loaded = await PhotoLibrary.image(for: asset, maxDimension: maxDimension)
-                withAnimation(.easeOut(duration: 0.2)) { image = loaded }
+                for await loaded in ImageCache.shared.thumbnails(for: assetID, maxPixels: maxDimension) {
+                    image = loaded
+                }
             }
     }
 }
@@ -43,25 +43,26 @@ struct CategoryRoute: Hashable {
 }
 
 struct ScreenshotGrid: View {
-    let records: [ScreenshotRecord]
+    let shots: [Shot]
     let scope: Scope
     @Query(sort: \CategoryDef.sortIndex) private var categories: [CategoryDef]
     private let columns = [GridItem(.adaptive(minimum: 108), spacing: 8)]
 
     var body: some View {
+        let lookup = Dictionary(categories.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
         LazyVGrid(columns: columns, spacing: 8) {
-            ForEach(records) { record in
-                NavigationLink(value: ScreenshotRoute(assetID: record.assetID, scope: scope)) {
-                    Thumbnail(assetID: record.assetID)
+            ForEach(shots) { shot in
+                NavigationLink(value: ScreenshotRoute(assetID: shot.id, scope: scope)) {
+                    Thumbnail(assetID: shot.id)
                         .aspectRatio(9 / 19.5, contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .overlay(alignment: .bottomLeading) {
-                            if let key = record.category, let category = categories.first(where: { $0.key == key }) {
+                            if let key = shot.category, let category = lookup[key] {
                                 CategoryBadge(category: category).padding(6)
                             }
                         }
                         .overlay(alignment: .topTrailing) {
-                            if record.lastError != nil {
+                            if shot.hasError {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .symbolRenderingMode(.multicolor)
                                     .padding(6)
@@ -73,4 +74,3 @@ struct ScreenshotGrid: View {
         .padding(.horizontal)
     }
 }
-

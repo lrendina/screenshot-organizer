@@ -48,12 +48,29 @@ App Store coming soon. In the meantime follow the instructions below
 ## How it works
 
 1. Reads screenshots from Photos: anything tagged `photoScreenshot`, plus images whose pixel size matches this device's screen (imported or saved screenshots often lose the tag).
-2. **Reads text on-device** (Vision OCR) for every screenshot. This works with no model and no key, and powers **search**.
-3. **Sorts** each unsorted screenshot:
+2. **Sorts** each unsorted screenshot in one pass: a 768px image from Photos, Vision's fast text recognizer (the text also powers **search**), then the model.
    - **On-device:** MobileCLIP embeds three square crops down the screenshot (top/middle/bottom), blends in an embedding of the OCR text (30%), and compares that against two prompts per category built from its name and description. A softmax over the similarities gives probabilities. "Other" isn't scored, because CLIP has no good embedding for "none of these". It wins when no category reaches 30%.
    - **Jev:** one `choice` question over `/v1/systemone`. The criteria are your categories and their descriptions.
-4. Stores the category, confidence and probabilities in SwiftData, keyed by the Photos asset ID. Sorted screenshots are never re-sent.
-5. Anything under the confidence threshold goes to **Review**. A category you pick by hand is never overwritten.
+3. Stores the category, confidence and probabilities in SwiftData, keyed by the Photos asset ID. Sorted screenshots are never re-sent.
+4. Anything under the confidence threshold goes to **Review**. A category you pick by hand is never overwritten.
+
+**Speed.** Screenshots are processed on every core at once, off the main thread. The main thread only applies results and saves about once a second, so the UI stays smooth during a sort. Screenshots stored only in iCloud wait until the ones on the phone are done, then download a few at a time. Measured on an iPhone 17 (`-benchmark`, 200 real screenshots):
+
+| Stage | Time per screenshot |
+|---|---|
+| Load 768px image from Photos | 1.3 ms |
+| Fast text recognition | 14 ms (accurate recognition: 60 ms) |
+| Image embedding (3 crops) | 7 ms |
+| Text embedding | 5 ms |
+| End to end, image only, 6 cores in parallel | ≈ 4 s per 1,000 screenshots |
+| End to end, image + text (what the app runs) | not yet measured on iPhone; ≈ 10.6 s per 1,000 on an M4 Mac |
+
+Vision's text recognizer must not run directly on Swift's cooperative thread pool. With a recognizer on every pool thread it deadlocks, so it runs on its own `OperationQueue` ([OCR.swift](ScreenshotOrganizer/Services/OCR.swift)).
+
+To benchmark your own phone (read-only, no changes saved):
+```sh
+xcrun devicectl device process launch --console --device <UDID> com.lrendina.ScreenshotOrganizer -benchmark 300
+```
 
 Failures never wipe a category. A Jev request is retried once; 4xx errors aren't retried. A rejected key stops the whole batch instead of flagging every screenshot. The error is saved on the screenshot and its previous category is kept.
 
@@ -117,7 +134,10 @@ ScreenshotOrganizer/
   App.swift                   entry, Photos permission, category seeding, auto-sort
   Models/Models.swift         ScreenshotRecord, CategoryDef (+ default categories)
   Services/
-    Classifier.swift          sync → OCR → sort (Engine: .local | .jev), bounded concurrency
+    Classifier.swift          sync, then a parallel single-pass sort (Engine: .local | .jev), batched saves
+    LibraryIndex.swift        value-type snapshot the views read (grouping, review, search)
+    ImageCache.swift          shared PHCachingImageManager + asset lookup for thumbnails
+    Benchmark.swift           -benchmark launch argument: per-stage timings
     TypeSafeClient.swift      POST /v1/systemone, Choice question, response parsing
     PhotoLibrary.swift        fetch screenshots, load images, save albums
     OCR.swift, Keychain.swift

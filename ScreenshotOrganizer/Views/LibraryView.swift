@@ -4,11 +4,12 @@ import SwiftUI
 struct LibraryView: View {
     @Environment(\.modelContext) private var context
     @Environment(Classifier.self) private var classifier
-    @Query(sort: \ScreenshotRecord.createdAt, order: .reverse) private var records: [ScreenshotRecord]
+    @Environment(LibraryIndex.self) private var index
     @Query(sort: \CategoryDef.sortIndex) private var categories: [CategoryDef]
     @State private var search = ""
+    @State private var searchResults: [Shot] = []
+    @State private var searching = false
 
-    private var unsorted: [ScreenshotRecord] { records.filter { $0.category == nil } }
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
@@ -16,26 +17,30 @@ struct LibraryView: View {
             ScrollView {
                 if search.isEmpty {
                     VStack(alignment: .leading, spacing: 24) {
-                        StatusCard(records: records, unsorted: unsorted.count)
-                        if !records.isEmpty { recentStrip }
+                        StatusCard(total: index.shots.count, unsorted: index.unsorted.count)
+                        if !index.shots.isEmpty { recentStrip }
                         categoryGrid
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 24)
                 } else {
-                    searchResults
+                    searchResultsView
                 }
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Shotsort")
             .searchable(text: $search, prompt: "Search text in screenshots")
-            .refreshable { classifier.sync(context: context) }
+            .task(id: search) { await runSearch() }
+            .refreshable {
+                classifier.sync(context: context)
+                index.reload(context: context)
+            }
             .navigationDestination(for: CategoryRoute.self) { route in
                 CategoryScreen(title: title(for: route.scope), tint: tint(for: route.scope),
-                               records: records(in: route.scope), scope: route.scope)
+                               shots: index.shots(in: route.scope), scope: route.scope)
             }
             .navigationDestination(for: ScreenshotRoute.self) { route in
-                ScreenshotPager(records: records(in: route.scope), selection: route.assetID)
+                ScreenshotPager(shots: shots(in: route.scope), selection: route.assetID)
             }
         }
     }
@@ -47,13 +52,13 @@ struct LibraryView: View {
             Text("Recent").font(.title3.bold())
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 10) {
-                    ForEach(records.prefix(12)) { record in
-                        NavigationLink(value: ScreenshotRoute(assetID: record.assetID, scope: .all)) {
-                            Thumbnail(assetID: record.assetID, maxDimension: 300)
+                    ForEach(index.shots.prefix(12)) { shot in
+                        NavigationLink(value: ScreenshotRoute(assetID: shot.id, scope: .all)) {
+                            Thumbnail(assetID: shot.id, maxDimension: 600)
                                 .frame(width: 92, height: 200)
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .overlay(alignment: .bottomLeading) {
-                                    if let key = record.category, let category = category(for: key) {
+                                    if let key = shot.category, let category = category(for: key) {
                                         CategoryBadge(category: category).padding(6)
                                     }
                                 }
@@ -70,15 +75,15 @@ struct LibraryView: View {
             Text("Categories").font(.title3.bold())
             LazyVGrid(columns: columns, spacing: 12) {
                 ForEach(categories) { category in
-                    let items = records.filter { $0.category == category.key }
                     NavigationLink(value: CategoryRoute(scope: .category(category.key))) {
-                        CategoryCard(name: category.name, symbol: category.symbol, tint: category.tint, records: items)
+                        CategoryCard(name: category.name, symbol: category.symbol, tint: category.tint,
+                                     shots: index.byCategory[category.key] ?? [])
                     }
                     .buttonStyle(.plain)
                 }
-                if !unsorted.isEmpty {
+                if !index.unsorted.isEmpty {
                     NavigationLink(value: CategoryRoute(scope: .unsorted)) {
-                        CategoryCard(name: "Unsorted", symbol: "tray", tint: .gray, records: unsorted)
+                        CategoryCard(name: "Unsorted", symbol: "tray", tint: .gray, shots: index.unsorted)
                     }
                     .buttonStyle(.plain)
                 }
@@ -86,45 +91,41 @@ struct LibraryView: View {
         }
     }
 
-    private var searchMatches: [ScreenshotRecord] { matches(for: search) }
-
-    private func matches(for search: String) -> [ScreenshotRecord] {
-        let query = search.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return [] }
-        let matchingKeys = Set(categories.filter { $0.name.localizedCaseInsensitiveContains(query) }.map(\.key))
-        return records.filter { record in
-            (record.ocrText?.localizedCaseInsensitiveContains(query) ?? false)
-                || record.category.map(matchingKeys.contains) == true
-        }
-    }
-
-    @ViewBuilder private var searchResults: some View {
-        let matches = searchMatches
-        if matches.isEmpty {
+    @ViewBuilder private var searchResultsView: some View {
+        if searchResults.isEmpty, !searching {
             ContentUnavailableView.search(text: search).padding(.top, 60)
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Text("^[\(matches.count) screenshot](inflect: true)")
+                Text("^[\(searchResults.count) screenshot](inflect: true)")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .padding(.horizontal)
-                ScreenshotGrid(records: matches, scope: .search(search))
+                ScreenshotGrid(shots: searchResults, scope: .search(search))
             }
         }
     }
 
     // MARK: Helpers
 
+    private func runSearch() async {
+        guard !search.isEmpty else { return searchResults = [] }
+        searching = true
+        // Debounce typing.
+        try? await Task.sleep(for: .milliseconds(150))
+        guard !Task.isCancelled else { return }
+        let keys = Set(categories.filter { $0.name.localizedCaseInsensitiveContains(search) }.map(\.key))
+        let results = await index.search(search, categoryKeys: keys, context: context)
+        guard !Task.isCancelled else { return }
+        searchResults = results
+        searching = false
+    }
+
     private func category(for key: String) -> CategoryDef? {
         categories.first { $0.key == key }
     }
 
-    private func records(in scope: Scope) -> [ScreenshotRecord] {
-        switch scope {
-        case .all, .review: records
-        case let .category(key): records.filter { $0.category == key }
-        case .unsorted: unsorted
-        case let .search(query): matches(for: query)
-        }
+    private func shots(in scope: Scope) -> [Shot] {
+        if case .search = scope { return searchResults }
+        return index.shots(in: scope)
     }
 
     private func title(for scope: Scope) -> String {
@@ -146,7 +147,7 @@ struct LibraryView: View {
 struct StatusCard: View {
     @Environment(\.modelContext) private var context
     @Environment(Classifier.self) private var classifier
-    let records: [ScreenshotRecord]
+    let total: Int
     let unsorted: Int
     @State private var modelStore = LocalModelStore.shared
     @AppStorage(SettingsKey.engine) private var engine = Engine.local.rawValue
@@ -155,24 +156,30 @@ struct StatusCard: View {
         VStack(alignment: .leading, spacing: 12) {
             if classifier.isRunning {
                 HStack {
-                    Label(classifier.phase == .reading ? "Reading text" : "Sorting with Jev",
-                          systemImage: classifier.phase == .reading ? "text.viewfinder" : "sparkles")
+                    Label(Engine.current == .local ? "Sorting on-device" : "Sorting with Jev", systemImage: "sparkles")
                         .font(.headline)
                     Spacer()
                     Text("\(classifier.done)/\(classifier.total)").monospacedDigit().foregroundStyle(.secondary)
                 }
                 ProgressView(value: Double(classifier.done), total: Double(max(classifier.total, 1)))
                     .tint(.accentColor)
-                Button("Stop", role: .cancel) { classifier.cancel() }
-                    .font(.subheadline)
-            } else if records.isEmpty {
+                HStack {
+                    Button("Stop", role: .cancel) { classifier.cancel() }
+                    Spacer()
+                    if classifier.waitingOnICloud > 0 {
+                        Label("\(classifier.waitingOnICloud) in iCloud", systemImage: "icloud.and.arrow.down")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .font(.subheadline)
+            } else if total == 0 {
                 Label("No screenshots yet", systemImage: "camera.viewfinder").font(.headline)
                 Text("Take a screenshot and it'll show up here.")
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(records.count - unsorted) of \(records.count)")
+                        Text("\(total - unsorted) of \(total)")
                             .font(.title2.bold()).monospacedDigit()
                         Text("screenshots sorted").font(.subheadline).foregroundStyle(.secondary)
                     }
@@ -195,8 +202,11 @@ struct StatusCard: View {
                             .foregroundStyle(.green)
                     }
                 }
-                ProgressView(value: Double(records.count - unsorted), total: Double(max(records.count, 1)))
+                ProgressView(value: Double(total - unsorted), total: Double(max(total, 1)))
                     .tint(unsorted == 0 ? .green : .accentColor)
+            }
+            if let message = classifier.lastSummary, !classifier.isRunning {
+                Text(message).font(.footnote).foregroundStyle(.secondary)
             }
             if let error = classifier.lastError, !classifier.isRunning {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -232,8 +242,7 @@ struct ModelDownloadButton: View {
                     if store.isReady { onReady() }
                 }
             } label: {
-                Label("Get model",
-                      systemImage: "arrow.down.circle")
+                Label("Get model", systemImage: "arrow.down.circle")
                     .font(.subheadline.weight(.semibold))
             }
             .buttonStyle(.borderedProminent)
@@ -244,31 +253,40 @@ struct ModelDownloadButton: View {
 
 // MARK: - Category card
 
-struct CategoryCard: View {
+struct CategoryCard: View, Equatable {
     let name: String
     let symbol: String
     let tint: Color
-    let records: [ScreenshotRecord]
+    let shots: [Shot]
+
+    static func == (a: CategoryCard, b: CategoryCard) -> Bool {
+        a.name == b.name && a.symbol == b.symbol && a.tint == b.tint
+            && a.shots.count == b.shots.count && a.shots.prefix(3).map(\.id) == b.shots.prefix(3).map(\.id)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ZStack {
                 LinearGradient(colors: [tint.opacity(0.35), tint.opacity(0.12)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                if records.isEmpty {
+                if shots.isEmpty {
                     Image(systemName: symbol)
                         .font(.system(size: 34, weight: .medium))
                         .foregroundStyle(tint)
                 } else {
                     // A small fan of the latest screenshots.
-                    ForEach(Array(records.prefix(3).enumerated().reversed()), id: \.element.id) { index, record in
-                        Thumbnail(assetID: record.assetID, maxDimension: 240)
-                            .frame(width: 58, height: 122)
-                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                            .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
-                            .rotationEffect(.degrees(Double(index - 1) * 9))
-                            .offset(x: CGFloat(index - 1) * 30, y: index == 1 ? -4 : 6)
+                    ZStack {
+                        ForEach(Array(shots.prefix(3).enumerated().reversed()), id: \.element.id) { index, shot in
+                            Thumbnail(assetID: shot.id, maxDimension: 360)
+                                .frame(width: 58, height: 122)
+                                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
+                                .rotationEffect(.degrees(Double(index - 1) * 9))
+                                .offset(x: CGFloat(index - 1) * 30, y: index == 1 ? -4 : 6)
+                        }
                     }
-                    .offset(x: records.count == 1 ? 30 : records.count == 2 ? 15 : 0)
+                    .offset(x: shots.count == 1 ? 30 : shots.count == 2 ? 15 : 0)
+                    // Rasterize the rotated, shadowed fan once instead of compositing it every frame.
+                    .drawingGroup()
                 }
             }
             .frame(height: 148)
@@ -278,7 +296,7 @@ struct CategoryCard: View {
                 Image(systemName: symbol).foregroundStyle(tint).font(.subheadline.weight(.semibold))
                 Text(name).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
                 Spacer(minLength: 0)
-                Text("\(records.count)").font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                Text("\(shots.count)").font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
             }
             .padding(.horizontal, 4)
         }
@@ -305,16 +323,16 @@ struct CategoryBadge: View {
 struct CategoryScreen: View {
     let title: String
     let tint: Color
-    let records: [ScreenshotRecord]
+    let shots: [Shot]
     let scope: Scope
 
     var body: some View {
         ScrollView {
-            if records.isEmpty {
+            if shots.isEmpty {
                 ContentUnavailableView("Nothing here yet", systemImage: "photo.on.rectangle")
                     .padding(.top, 80)
             } else {
-                ScreenshotGrid(records: records, scope: scope)
+                ScreenshotGrid(shots: shots, scope: scope)
             }
         }
         .background(Color(.systemGroupedBackground))
@@ -337,7 +355,8 @@ extension CategoryDef {
         case "notes": .brown
         case CategoryDef.otherKey: .gray
         default:
-            [Color.purple, .mint, .cyan, .orange, .pink][abs(key.hashValue) % 5]
+            // Stable across launches (String.hashValue is randomly seeded per process).
+            [Color.purple, .mint, .cyan, .orange, .pink][key.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 5]
         }
     }
 }

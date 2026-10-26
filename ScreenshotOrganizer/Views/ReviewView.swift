@@ -1,14 +1,12 @@
-import SwiftData
 import SwiftUI
 
-/// Screenshots Jev wasn't sure about, plus ones that failed to classify.
+/// Screenshots the model wasn't sure about, plus ones that failed to classify.
 struct ReviewView: View {
-    @Query(sort: \ScreenshotRecord.createdAt, order: .reverse) private var records: [ScreenshotRecord]
+    @Environment(LibraryIndex.self) private var index
     @AppStorage(SettingsKey.reviewThreshold) private var threshold = 0.5
 
-    private var needsReview: [ScreenshotRecord] { records.filter { $0.needsReview(threshold: threshold) } }
-
     var body: some View {
+        let needsReview = index.shots(in: .review, reviewThreshold: threshold)
         NavigationStack {
             ScrollView {
                 if needsReview.isEmpty {
@@ -19,11 +17,12 @@ struct ReviewView: View {
                     )
                     .padding(.top, 80)
                 } else {
-                    ScreenshotGrid(records: needsReview, scope: .review)
+                    ScreenshotGrid(shots: needsReview, scope: .review)
                 }
             }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("Review")
-            .navigationDestination(for: ScreenshotRoute.self) { ScreenshotPager(records: needsReview, selection: $0.assetID) }
+            .navigationDestination(for: ScreenshotRoute.self) { ScreenshotPager(shots: needsReview, selection: $0.assetID) }
         }
     }
 }
