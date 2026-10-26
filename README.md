@@ -12,7 +12,7 @@ Sorts your iPhone screenshots into categories. Pick the model in Settings:
 
 ## Install on your iPhone
 
-Shotsort isn't on the App Store. You install it from this repo with a Mac and a free Apple ID. It takes about 10 minutes the first time.
+App Store coming soon. In the meantime follow the instructions below
 
 **You need:** a Mac with [Xcode](https://apps.apple.com/app/xcode/id497799835), [Homebrew](https://brew.sh), an iPhone with iOS 17 or later, and a cable.
 
